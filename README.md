@@ -175,7 +175,7 @@ The same server comes with a small CLI. Symlink `bin/media-gen.mjs` onto your `P
 
 ```bash
 media-gen env                            # what is in effect right now
-media-gen models                         # models and their constraints
+media-gen models                         # image models and their size floors
 media-gen outdir                         # where images and videos will be written
 media-gen img "a corgi surfing at sunset"
 media-gen img "cyberpunk alley" -s 2048x2048 -o alley.jpg
@@ -192,7 +192,7 @@ media-gen serve                          # run the MCP server on stdio
 | --- | --- |
 | `no API key configured` | `apiKey:` is missing or empty in the config file. |
 | `model … requires at least N pixels` | That image model has a size floor — use the size the message suggests. |
-| `media API error [InvalidEndpointOrModel.NotFound]` | The model is not available to your account or region. Run `media-gen models`. |
+| `media API error [InvalidEndpointOrModel.NotFound]` | The model is not available to your account or region. `get_config` lists the models this version knows. |
 | `media API error [SetLimitExceeded]` | Ark's "Safe Experience Mode" usage cap for that model. Raise or close it on the Ark console's model-activation page. |
 | `video task … did not finish within Ns` | The clip was still rendering. The message carries the task id, so you can query it instead of paying for a second render — or raise `videoTimeoutMs`. |
 | `video task … reported a status this version does not know` | A state the server will not guess at. Update the server rather than retrying blindly. |

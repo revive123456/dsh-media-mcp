@@ -165,7 +165,7 @@ videoTimeoutMs: 1200000    # 更长的片段
 
 ```bash
 media-gen env                            # 当前生效的配置
-media-gen models                         # 模型列表及各自约束
+media-gen models                         # 图片模型及各自尺寸下限
 media-gen outdir                         # 图片和视频分别会写到哪
 media-gen img "一只橘猫在窗台晒太阳，写实摄影"
 media-gen img "赛博朋克小巷" -s 2048x2048 -o alley.jpg
@@ -182,7 +182,7 @@ media-gen serve                          # 在 stdio 上运行 MCP server
 | --- | --- |
 | `no API key configured` | 配置文件里的 `apiKey:` 缺失或为空 |
 | `model … requires at least N pixels` | 该图片模型有尺寸下限 —— 用报错里建议的那个尺寸 |
-| `media API error [InvalidEndpointOrModel.NotFound]` | 模型在你的账号或区域不可用。跑 `media-gen models` 核对 |
+| `media API error [InvalidEndpointOrModel.NotFound]` | 模型在你的账号或区域不可用。本版本收录的模型可用 `get_config` 查 |
 | `media API error [SetLimitExceeded]` | 撞上方舟「安全体验模式」的额度上限。到方舟控制台「模型开通」页调高或关闭 |
 | `video task … did not finish within Ns` | 视频还在渲染。报错里带了任务 id，直接查它，别为第二次渲染再付一次钱 |
 | `video task … reported a status this version does not know` | 出现了本版本不愿瞎猜的状态。升级 server，而不是盲目重试 |
