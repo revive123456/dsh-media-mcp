@@ -1,0 +1,43 @@
+# media-gen configuration — copy to your config directory and fill in.
+#
+#   macOS/Linux : ~/.config/media-gen/config.yml
+#   Windows     : %APPDATA%\media-gen\config.yml
+#
+# This file holds an API key. Keep it readable only by you (chmod 600).
+# Every setting can also be supplied as an environment variable; the
+# environment wins over this file.
+#
+# Keys are the same names the MCP tools use. A file left over from an earlier
+# release, written as `MEDIA_GEN_API_KEY=...` assignments, is still read.
+
+# Which provider preset to use.
+provider: ark
+
+# Credential for that provider. Required.
+apiKey:
+
+# Optional override of the provider's base URL.
+# baseUrl: https://ark.cn-beijing.volces.com/api/v3
+
+# Default image model and size. Some models enforce a minimum pixel count;
+# run `media-gen models` to see the catalogue and its floors.
+imageModel: doubao-seedream-4-0-250828
+imageSize: 1024x1024
+
+# Default video model. Video is asynchronous (minutes per clip) and costs more
+# per call, so it is only generated when asked for explicitly.
+videoModel: doubao-seedance-2-5-260628
+
+# How long a call may wait, in milliseconds. A five second clip measured about
+# four minutes, so keep the video budget generous. Both can be overridden for a
+# single call (the tools take `timeoutMs`, the CLI takes --timeout-ms); the
+# ceiling is 3600000 (one hour).
+# Keep your MCP client's own tool timeout above these, or the client gives up
+# first and you see its error instead of ours.
+imageTimeoutMs: 180000
+videoTimeoutMs: 720000
+
+# Where generated media is written. Images default to <workspace>/image_output
+# and videos to <workspace>/video_output; setting this sends both here. A leading
+# ~ is expanded, so quote the value to keep YAML from reading the tilde as null.
+# outputDir: "~/Pictures/generated"

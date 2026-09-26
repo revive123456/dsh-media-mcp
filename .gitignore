@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Generated media
+image_output/
+video_output/
+
+# Local configuration, including API keys
+config.yml
+config.yaml
+config.env
+*.env
+!config.example.env
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
