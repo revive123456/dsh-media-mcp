@@ -1,7 +1,7 @@
 {
   "name": "dsh-media-mcp",
-  "version": "0.2.0",
-  "description": "Zero-dependency MCP server that generates images and videos through a configurable provider and exposes its own configuration as tools.",
+  "version": "0.3.0",
+  "description": "Zero-dependency MCP server that generates images, videos and speech through a configurable provider and exposes its own configuration as tools.",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -35,6 +35,9 @@
     "dsh",
     "deepseek-harness",
     "image-generation",
-    "text-to-image"
+    "text-to-image",
+    "video-generation",
+    "text-to-speech",
+    "tts"
   ]
 }

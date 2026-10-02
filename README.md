@@ -2,7 +2,7 @@
 
 [中文](README.zh.md) | English
 
-Turn a sentence into an image or a short video on your machine.
+Turn a sentence into an image, a short video or spoken audio on your machine.
 
 `dsh-media-mcp` is a small [MCP](https://modelcontextprotocol.io) server. Your AI client calls it,
 it calls your media provider, and the result lands on disk as a normal file you can open. It also
@@ -19,6 +19,7 @@ Just ask:
 - **"Draw a corgi surfing at sunset."** — you get back an absolute path to a saved JPEG.
 - **"Make a five second clip of a paper boat drifting down a rainy street."** — a video, in a few
   minutes (three to four, measured).
+- **"Read this paragraph aloud."** — an MP3 of synthesized speech.
 - **"What models are you using?"** — `get_config` answers.
 - **"Switch to Seedream 4.0, 2048x2048."** — `set_config` saves it; the next image uses it.
 
@@ -26,6 +27,7 @@ Just ask:
 | --- | --- |
 | `generate_image` | Generate from a prompt, save it, return the paths. Optional per-call `model`, `size`, `outputDir`. |
 | `generate_video` | Generate a short clip. Text to video only. Optional per-call `model`, `ratio`, `duration`, `outputDir`. Slow and paid — ask for it explicitly. |
+| `generate_speech` | Synthesize speech from text, save it, return the path. Optional per-call `model`, `voice`, `format`, `outputDir`. Paid — ask for it explicitly. |
 | `get_config` | Show the settings in effect, whether a key is configured, and which models are known. |
 | `set_config` | Change a setting and save it. Applies to the next call. |
 
@@ -42,23 +44,32 @@ Node.js `^22.19.0 || >=24.0.0`. No dependencies, no build step: clone it and run
 
 ## Setup
 
-### 1. Get an API key
+### 1. Get your API keys
 
 The built-in preset is Volcengine Ark (Doubao / Seedream / Seedance). The server speaks the OpenAI
 images API for pictures and Ark's task API for video, so a different vendor works too — it needs one
 entry in `src/providers.mjs`.
 
+Speech is a **separate service with its own key**. The Ark key is rejected there (you get
+`Invalid X-Api-Key`), so if you want TTS, create a key in the Doubao speech console:
+<https://console.volcengine.com/speech/new/setting/apikeys>. Image and video keep working with the
+Ark key alone; you only need the second key when you call `generate_speech`.
+
 ### 2. Write the config file
 
-This is where your key lives. `~/.config/media-gen/config.yml` on macOS and Linux, or
+This is where your keys live. `~/.config/media-gen/config.yml` on macOS and Linux, or
 `%APPDATA%\media-gen\config.yml` on Windows:
 
 ```yaml
 provider: ark
-apiKey: your-api-key
+apiKey: your-ark-api-key            # images and video
 imageModel: doubao-seedream-5-0-flash-260915
 imageSize: 1024x1024
 videoModel: doubao-seedance-2-5-260628
+# speechApiKey: your-speech-key     # optional; omit to reuse apiKey
+speechModel: seed-tts-2.0
+speechVoice: zh_female_vv_uranus_bigtts
+speechFormat: mp3
 # outputDir: "~/Pictures/generated"
 ```
 
@@ -102,10 +113,11 @@ DeepSeek Harness — append this row to `$DSH_HOME/profiles/<profile>/cordis.pat
 ```
 
 The tools appear as `mcp__media__generate_image`, `mcp__media__generate_video`,
-`mcp__media__get_config` and `mcp__media__set_config`.
+`mcp__media__generate_speech`, `mcp__media__get_config` and `mcp__media__set_config`.
 
 **No app restart needed:** a patched profile picks the row up in the same session, and generated
-files follow `cwd`, so point `cwd` at the workspace you want them in.
+files follow `cwd`, so point `cwd` at the workspace you want them in. (Editing the server's own
+`src/*.mjs` is different: that code loads once per process, so restart the server or the app.)
 
 ## Where your files go
 
@@ -113,9 +125,10 @@ files follow `cwd`, so point `cwd` at the workspace you want them in.
 | --- | --- | --- |
 | Images | `<workspace>/image_output/` — one `img-YYYYMMDD-HHMMSS.jpg` per result | `outputDir` (config or per call) |
 | Videos | `<workspace>/video_output/` — one `vid-YYYYMMDD-HHMMSS.mp4` per result | `outputDir` (config or per call) |
+| Speech | `<workspace>/speech_output/` — one `speech-YYYYMMDD-HHMMSS.mp3` per call | `outputDir` (config or per call) |
 
-`<workspace>` is the `cwd` you gave the server. Setting `outputDir` sends **both** kinds to that one
-folder; leave it unset to keep them apart. `media-gen outdir` prints both directories, and `~` is
+`<workspace>` is the `cwd` you gave the server. Setting `outputDir` sends **all three** kinds to that
+one folder; leave it unset to keep them apart. `media-gen outdir` prints every directory, and `~` is
 expanded in a configured path.
 
 Tools return **paths**, not file data, so a large image or clip never floods the conversation. Open
@@ -130,34 +143,40 @@ needs restarting either way.
 | Setting | In the config file | Environment variable | Notes |
 | --- | --- | --- | --- |
 | Provider | `provider:` | `MEDIA_GEN_PROVIDER` | Which preset to use. Default `ark`. |
-| API key | `apiKey:` | `MEDIA_GEN_API_KEY` | Required. Never printed by any tool. |
+| API key | `apiKey:` | `MEDIA_GEN_API_KEY` | Required for images and video. Never printed by any tool. |
 | API URL | `baseUrl:` | `MEDIA_GEN_BASE_URL` | Overrides the preset's URL. |
 | Image model | `imageModel:` | `MEDIA_GEN_IMAGE_MODEL` | Default model for pictures. |
 | Image size | `imageSize:` | `MEDIA_GEN_IMAGE_SIZE` | Default size, `WxH`. |
 | Video model | `videoModel:` | `MEDIA_GEN_VIDEO_MODEL` | Default model for clips. |
+| Speech key | `speechApiKey:` | `MEDIA_GEN_SPEECH_API_KEY` | Speech service only. Leave unset to reuse `apiKey`. |
+| Speech model | `speechModel:` | `MEDIA_GEN_SPEECH_MODEL` | Speech resource id, default `seed-tts-2.0`. |
+| Speech voice | `speechVoice:` | `MEDIA_GEN_SPEECH_VOICE` | Speaker id, default `zh_female_vv_uranus_bigtts`. Any id your account activated works. |
+| Speech format | `speechFormat:` | `MEDIA_GEN_SPEECH_FORMAT` | `mp3`, `pcm` or `ogg_opus`. Default `mp3`. |
 | Image timeout | `imageTimeoutMs:` | `MEDIA_GEN_IMAGE_TIMEOUT_MS` | Milliseconds one image call may take. Default `180000`. |
 | Video timeout | `videoTimeoutMs:` | `MEDIA_GEN_VIDEO_TIMEOUT_MS` | Milliseconds the whole video flow may take. Default `720000`. |
-| Output folder | `outputDir:` | `MEDIA_GEN_OUTPUT_DIR` | Overrides both defaults above. `~` is expanded. |
+| Speech timeout | `speechTimeoutMs:` | `MEDIA_GEN_SPEECH_TIMEOUT_MS` | Milliseconds one speech call may take. Default `120000`. |
+| Output folder | `outputDir:` | `MEDIA_GEN_OUTPUT_DIR` | Overrides all the defaults above. `~` is expanded. |
 
 An environment variable beats the config file. For the model lists, their size floors and their
 notes, run `media-gen models` or ask `get_config`.
 
 Aspect ratio and clip length are per call (`ratio`, `duration`; default `16:9` and `5` seconds),
-because they change what a clip costs.
+because they change what a clip costs. The same is true of `voice` and `format` for speech.
 
 ### Timeouts
 
-A five second clip measured about four minutes, so both waits are yours to set rather than constants
+A five second clip measured about four minutes, so the waits are yours to set rather than constants
 baked into the code:
 
 ```yaml
 imageTimeoutMs: 300000     # a slow image provider
 videoTimeoutMs: 1200000    # longer clips
+speechTimeoutMs: 180000    # a long text
 ```
 
-`set_config` writes the same two keys, `media-gen config set videoTimeoutMs=1200000` does it from a
-shell, and either can be overridden for one call: `generate_image` and `generate_video` take
-`timeoutMs`, the CLI takes `--timeout-ms 1200000`. `get_config` reports what is in effect.
+`set_config` writes the same keys, `media-gen config set videoTimeoutMs=1200000` does it from a
+shell, and any of them can be overridden for one call: the generate tools take `timeoutMs`, the CLI
+takes `--timeout-ms 1200000`. `get_config` reports what is in effect.
 
 The ceiling is `3600000` (one hour). A larger value is refused rather than shortened, because a call
 that hangs for an hour is a mistake worth seeing.
@@ -175,13 +194,16 @@ The same server comes with a small CLI. Symlink `bin/media-gen.mjs` onto your `P
 
 ```bash
 media-gen env                            # what is in effect right now
-media-gen models                         # image models and their size floors
-media-gen outdir                         # where images and videos will be written
+media-gen models                         # image models (size floors) and speech models
+media-gen outdir                         # where images, videos and speech will be written
 media-gen img "a corgi surfing at sunset"
 media-gen img "cyberpunk alley" -s 2048x2048 -o alley.jpg
 media-gen video "a paper boat drifting down a rainy street" --duration 5
+media-gen speech "你好，这是一段语音合成测试。"
+media-gen speech "Read me aloud" -v zh_female_vv_uranus_bigtts -f mp3 -o hello.mp3
 media-gen config set imageModel=doubao-seedream-4-0-250828
 media-gen config set videoModel=doubao-seedance-1-0-pro-250528
+media-gen config set speechApiKey=your-speech-key      # write-only, like the tools
 media-gen key                            # redacted; the raw key is never printed
 media-gen serve                          # run the MCP server on stdio
 ```
@@ -194,6 +216,9 @@ media-gen serve                          # run the MCP server on stdio
 | `model … requires at least N pixels` | That image model has a size floor — use the size the message suggests. |
 | `media API error [InvalidEndpointOrModel.NotFound]` | The model is not available to your account or region. `get_config` lists the models this version knows. |
 | `media API error [SetLimitExceeded]` | Ark's "Safe Experience Mode" usage cap for that model. Raise or close it on the Ark console's model-activation page. |
+| `speech API error [45000010]: Invalid X-Api-Key` | The speech service rejected the key. An Ark key does not work there: set `speechApiKey:` to a key from the Doubao speech console. |
+| `speech API error [55000000]: resource ID is mismatched with speaker related resource` | The voice does not belong to the configured speech resource. Check the voice and resource id against the speech console — either can be the mismatched one. |
+| `speech API returned no audio data` | The service answered without audio — usually the same credential or resource problem in a different shape. The message quotes the raw body. |
 | `video task … did not finish within Ns` | The clip was still rendering. The message carries the task id, so you can query it instead of paying for a second render — or raise `videoTimeoutMs`. |
 | `video task … reported a status this version does not know` | A state the server will not guess at. Update the server rather than retrying blindly. |
 | A video tool call is cut off by your client | Raise its tool timeout. The clip legitimately takes minutes; the row above uses `900000`. |
@@ -205,6 +230,13 @@ media-gen serve                          # run the MCP server on stdio
 Text to video, one clip per call. Reference images and videos (image-to-video, extend, edit) are not
 supported: each of those changes the request contract, and what is not implemented should not look
 like it is.
+
+## What speech can and cannot do
+
+Text to speech, one file per call, using the streaming endpoint the provider documents — the whole
+answer is collected and written once, so a partial file is never left behind. Voice, format and
+sampling rate are settings; speed, pitch, loudness and emotion controls, voice cloning and
+speech-to-text are **not** implemented, so nothing pretends to accept them.
 
 ## Development
 

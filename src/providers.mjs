@@ -16,6 +16,7 @@
 
 import {
   DEFAULT_IMAGE_TIMEOUT_MS,
+  DEFAULT_SPEECH_TIMEOUT_MS,
   DEFAULT_VIDEO_TIMEOUT_MS,
   parseTimeoutMs,
 } from './config.mjs';
@@ -80,6 +81,27 @@ const ARK_VIDEO_MODELS = [
 ];
 
 /**
+ * Speech (text-to-speech) resources known for the `ark` provider.
+ *
+ * The id is the resource selector, not a checkpoint: it travels in the
+ * `X-Api-Resource-Id` header. A note states only what is behind it — `seed-tts-2.0`
+ * is the one this project has actually synthesized with, and the other entry says
+ * it is unverified. Do not upgrade a note to a measured claim without a run.
+ */
+const ARK_SPEECH_MODELS = [
+  {
+    id: 'seed-tts-2.0',
+    label: 'Seed TTS 2.0',
+    note: 'verified 2026-10-02: 18 chars -> 27 KB mp3 in ~2s, voice zh_female_vv_uranus_bigtts',
+  },
+  {
+    id: 'seed-tts-1.0',
+    label: 'Seed TTS 1.0',
+    note: 'earlier resource id seen in third-party clients; unverified here',
+  },
+];
+
+/**
  * Known providers.
  *
  * `extraBody` is merged into every image request and is how a provider's
@@ -89,6 +111,11 @@ const ARK_VIDEO_MODELS = [
  * request fields. Ark accepts the prompt form on this account for every model in
  * the catalogue; the field form is the newer documented contract for Seedance
  * 2.x, so it stays one line away instead of being guessed at.
+ *
+ * Speech gets the same treatment: `speechBaseUrl` + `speechPath` name the
+ * synthesis endpoint (which is a different service from the image/video host),
+ * and the speech model id travels in a header rather than the body, which is why
+ * it is a preset field and not part of the generic request builder.
  */
 export const PROVIDERS = {
   ark: {
@@ -106,6 +133,17 @@ export const PROVIDERS = {
     defaultVideoRatio: '16:9',
     defaultVideoDuration: 5,
     videoModels: ARK_VIDEO_MODELS,
+    // Doubao speech synthesis is its own service with its own API key, so it
+    // carries a base URL of its own instead of riding on `baseUrl`.
+    speechBaseUrl: 'https://openspeech.bytedance.com',
+    speechPath: '/api/v3/tts/unidirectional/sse',
+    defaultSpeechModel: 'seed-tts-2.0',
+    defaultSpeechVoice: 'zh_female_vv_uranus_bigtts',
+    defaultSpeechFormat: 'mp3',
+    defaultSpeechSampleRate: 24_000,
+    defaultSpeechBitRate: 64_000,
+    speechFormats: ['mp3', 'pcm', 'ogg_opus'],
+    speechModels: ARK_SPEECH_MODELS,
   },
 };
 
@@ -144,6 +182,11 @@ export function findVideoModel(provider, modelId) {
   return (provider.videoModels ?? []).find((entry) => entry.id === modelId);
 }
 
+/** Find a catalogue entry for a speech resource id, if this project knows it. */
+export function findSpeechModel(provider, modelId) {
+  return (provider.speechModels ?? []).find((entry) => entry.id === modelId);
+}
+
 /**
  * Turn raw loaded values into the settings every layer consumes.
  *
@@ -162,6 +205,16 @@ export function resolveSettings(loaded) {
     imageModel: loaded.values.imageModel ?? provider.defaultImageModel,
     imageSize: loaded.values.imageSize ?? provider.defaultImageSize,
     videoModel: loaded.values.videoModel ?? provider.defaultVideoModel,
+    speechModel: loaded.values.speechModel ?? provider.defaultSpeechModel,
+    speechVoice: loaded.values.speechVoice ?? provider.defaultSpeechVoice,
+    speechFormat: loaded.values.speechFormat ?? provider.defaultSpeechFormat,
+    // Sample rate and bit rate are provider facts, not preferences, so they stay
+    // in the preset until a caller has a reason to override them per call.
+    speechSampleRate: provider.defaultSpeechSampleRate,
+    // The speech service issues its own key, but a single-key installation is
+    // the common case: fall back to the image/video key instead of demanding a
+    // second credential up front.
+    speechApiKey: loaded.values.speechApiKey ?? loaded.values.apiKey,
     // Timeouts resolve here, not at the call site, so a bad configured value
     // fails loudly on every entry point instead of aborting one request early.
     imageTimeoutMs: parseTimeoutMs(
@@ -171,6 +224,10 @@ export function resolveSettings(loaded) {
     videoTimeoutMs: parseTimeoutMs(
       loaded.values.videoTimeoutMs ?? DEFAULT_VIDEO_TIMEOUT_MS,
       'videoTimeoutMs',
+    ),
+    speechTimeoutMs: parseTimeoutMs(
+      loaded.values.speechTimeoutMs ?? DEFAULT_SPEECH_TIMEOUT_MS,
+      'speechTimeoutMs',
     ),
     outputDir: loaded.values.outputDir,
     sources: loaded.sources,

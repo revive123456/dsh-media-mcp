@@ -10,6 +10,7 @@
 import { KEY_SPEC, SETTING_KEYS, loadConfig, parseTimeoutMs, updateConfigFile } from './config.mjs';
 import { parseSize } from './images.mjs';
 import { resolveProvider, resolveSettings } from './providers.mjs';
+import { parseSpeechFormat } from './speech.mjs';
 
 /**
  * Load and resolve settings from the live environment.
@@ -87,6 +88,35 @@ export function applyConfigPatch(patch, { env = process.env, cwd = process.cwd()
 
   if (requested.videoTimeoutMs !== undefined) {
     next.videoTimeoutMs = parseTimeoutMs(requested.videoTimeoutMs, 'videoTimeoutMs');
+  }
+
+  if (requested.speechApiKey !== undefined) {
+    const speechApiKey = String(requested.speechApiKey).trim();
+    if (speechApiKey === '') throw new Error(`${KEY_SPEC.speechApiKey.env} must not be empty`);
+    next.speechApiKey = speechApiKey;
+  }
+
+  if (requested.speechModel !== undefined) {
+    const speechModel = String(requested.speechModel).trim();
+    if (speechModel === '') throw new Error('speechModel must not be empty');
+    next.speechModel = speechModel;
+  }
+
+  if (requested.speechVoice !== undefined) {
+    const speechVoice = String(requested.speechVoice).trim();
+    if (speechVoice === '') throw new Error('speechVoice must not be empty');
+    next.speechVoice = speechVoice;
+  }
+
+  if (requested.speechFormat !== undefined) {
+    const speechFormat = String(requested.speechFormat).trim();
+    if (speechFormat === '') throw new Error('speechFormat must not be empty');
+    parseSpeechFormat(speechFormat, settings.provider);
+    next.speechFormat = speechFormat;
+  }
+
+  if (requested.speechTimeoutMs !== undefined) {
+    next.speechTimeoutMs = parseTimeoutMs(requested.speechTimeoutMs, 'speechTimeoutMs');
   }
 
   if (requested.outputDir !== undefined) {

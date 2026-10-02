@@ -3,9 +3,8 @@
  *
  * The config file is a flat YAML mapping: one `key: value` per line, `#`
  * comments, an optional `---` marker, and single- or double-quoted values. Keys
- * are the setting names the MCP tools already accept (`provider`, `apiKey`,
- * `baseUrl`, `imageModel`, `imageSize`, `outputDir`), so the file and the tool
- * arguments share one vocabulary instead of two.
+ * are the setting names the MCP tools already accept (see {@link KEY_SPEC}), so
+ * the file and the tool arguments share one vocabulary instead of two.
  *
  * A file written as env assignments (`NAME=value`, optional `export`) is still
  * read: that is what earlier releases shipped, and reading it is what lets an
@@ -46,6 +45,9 @@ export const DEFAULT_IMAGE_TIMEOUT_MS = 180_000;
 /** Default budget for the whole video flow: create task, poll it, download. */
 export const DEFAULT_VIDEO_TIMEOUT_MS = 720_000;
 
+/** Default budget for one speech (text-to-speech) call. */
+export const DEFAULT_SPEECH_TIMEOUT_MS = 120_000;
+
 /**
  * File name this project used before it moved to YAML.
  *
@@ -70,6 +72,11 @@ export const KEY_SPEC = {
   imageTimeoutMs: { env: 'MEDIA_GEN_IMAGE_TIMEOUT_MS' },
   videoModel: { env: 'MEDIA_GEN_VIDEO_MODEL' },
   videoTimeoutMs: { env: 'MEDIA_GEN_VIDEO_TIMEOUT_MS' },
+  speechApiKey: { env: 'MEDIA_GEN_SPEECH_API_KEY', secret: true },
+  speechModel: { env: 'MEDIA_GEN_SPEECH_MODEL' },
+  speechVoice: { env: 'MEDIA_GEN_SPEECH_VOICE' },
+  speechFormat: { env: 'MEDIA_GEN_SPEECH_FORMAT' },
+  speechTimeoutMs: { env: 'MEDIA_GEN_SPEECH_TIMEOUT_MS' },
   outputDir: { env: 'MEDIA_GEN_OUTPUT_DIR' },
 };
 

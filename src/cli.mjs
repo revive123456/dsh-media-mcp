@@ -12,40 +12,55 @@
 import { renameSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { maskSecret } from './config.mjs';
-import { describeConfig, describeModels, describeResult, describeVideoResult } from './describe.mjs';
+import {
+  describeConfig,
+  describeModels,
+  describeResult,
+  describeSpeechModels,
+  describeSpeechResult,
+  describeVideoResult,
+} from './describe.mjs';
 import { generateImage } from './generate.mjs';
 import { resolveOutputDir } from './images.mjs';
 import { PROVIDERS } from './providers.mjs';
 import { applyConfigPatch, currentSettings } from './settings.mjs';
+import { generateSpeech } from './speech.mjs';
 import { generateVideo } from './video.mjs';
 
-const USAGE = `media-gen — image and video generation through a configurable provider
+const USAGE = `media-gen — image, video and speech generation through a configurable provider
 
 Usage:
   media-gen env                       show the effective configuration
   media-gen outdir                    print the directory new media goes to
-  media-gen models                    list known image models and their size floors
+  media-gen models                    list known image and speech models
   media-gen config                    show the effective configuration
   media-gen config set KEY=VALUE...   persist settings (see keys below)
   media-gen img "PROMPT" [-o FILE] [-m MODEL] [-s WxH] [--timeout-ms MS]
   media-gen video "PROMPT" [-o FILE] [-m MODEL] [--ratio W:H] [--duration SECONDS] [--timeout-ms MS]
+  media-gen speech "TEXT" [-o FILE] [-m MODEL] [-v VOICE] [-f FORMAT] [--timeout-ms MS]
   media-gen key                       print a redacted view of the API key
   media-gen serve                     run the MCP server on stdio
 
 Settings keys: provider, apiKey, baseUrl, imageModel, imageSize, imageTimeoutMs,
-               videoModel, videoTimeoutMs, outputDir
+               videoModel, videoTimeoutMs, speechApiKey, speechModel, speechVoice,
+               speechFormat, speechTimeoutMs, outputDir
 Known providers: ${Object.keys(PROVIDERS).join(', ')}
 
-Images land in <workspace>/image_output and videos in <workspace>/video_output unless
-outputDir is set. Both timeouts are milliseconds; --timeout-ms overrides them for one call.
+Images land in <workspace>/image_output, videos in <workspace>/video_output and speech
+in <workspace>/speech_output unless outputDir is set. Timeouts are milliseconds;
+--timeout-ms overrides the configured default for one call.
 
 Examples:
   media-gen img "a corgi surfing at sunset, cinematic"
   media-gen img "cyberpunk alley" -s 2048x2048 -o alley.jpg
   media-gen video "a paper boat drifting down a rainy street" --duration 5
   media-gen video "a timelapse of a storm" --duration 10 --timeout-ms 1200000
+  media-gen speech "你好，这是一段语音合成测试。"
+  media-gen speech "Read me aloud" -v zh_female_vv_uranus_bigtts -f mp3
   media-gen config set imageModel=${PROVIDERS.ark.defaultImageModel}
   media-gen config set videoModel=${PROVIDERS.ark.defaultVideoModel}
+  media-gen config set speechModel=${PROVIDERS.ark.defaultSpeechModel}
+  media-gen config set speechVoice=${PROVIDERS.ark.defaultSpeechVoice}
   media-gen config set videoTimeoutMs=1200000
 `;
 
@@ -142,6 +157,52 @@ export function parseVideoArgs(tokens) {
 }
 
 /**
+ * Parse the text and flags of `media-gen speech`.
+ *
+ * `--voice` and `--format` are the two knobs that decide what the audio sounds
+ * like, so they are accepted here as well as per MCP call.
+ */
+export function parseSpeechArgs(tokens) {
+  const request = { text: [] };
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const next = () => {
+      index += 1;
+      if (index >= tokens.length) throw new Error(`${token} expects a value`);
+      return tokens[index];
+    };
+    switch (token) {
+      case '-o':
+      case '--out':
+        request.out = next();
+        break;
+      case '-m':
+      case '--model':
+        request.model = next();
+        break;
+      case '-v':
+      case '--voice':
+        request.voice = next();
+        break;
+      case '-f':
+      case '--format':
+        request.format = next();
+        break;
+      case '--timeout-ms':
+        request.timeoutMs = next();
+        break;
+      default:
+        request.text.push(token);
+    }
+  }
+  request.text = request.text.join(' ').trim();
+  if (request.text === '') {
+    throw new Error('some text is required, e.g. media-gen speech "hello there"');
+  }
+  return request;
+}
+
+/**
  * Run the CLI.
  *
  * @param argv - arguments after the executable name.
@@ -167,12 +228,17 @@ export async function main(argv = []) {
         const settings = currentSettings();
         const dir = (kind) =>
           resolveOutputDir({ configured: settings.outputDir, cwd: settings.cwd, kind });
-        process.stdout.write(`images: ${dir('image')}\nvideos: ${dir('video')}\n`);
+        process.stdout.write(
+          `images: ${dir('image')}\nvideos: ${dir('video')}\nspeech: ${dir('speech')}\n`,
+        );
         return 0;
       }
 
       case 'models': {
-        process.stdout.write(`${describeModels(currentSettings())}\n`);
+        const settings = currentSettings();
+        process.stdout.write(
+          `${describeModels(settings)}\n\n${describeSpeechModels(settings)}\n`,
+        );
         return 0;
       }
 
@@ -213,6 +279,25 @@ export async function main(argv = []) {
         }
 
         process.stdout.write(`${describeVideoResult(result)}\n`);
+        return 0;
+      }
+
+      case 'speech':
+      case 'say':
+      case 'tts': {
+        const request = parseSpeechArgs(rest);
+        const settings = currentSettings();
+        const result = await generateSpeech(settings, request);
+
+        if (request.out !== undefined && result.files.length > 0) {
+          const target = isAbsolute(request.out)
+            ? request.out
+            : join(result.directory, request.out);
+          renameSync(result.files[0].path, target);
+          result.files[0].path = target;
+        }
+
+        process.stdout.write(`${describeSpeechResult(result)}\n`);
         return 0;
       }
 

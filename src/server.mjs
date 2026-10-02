@@ -1,9 +1,9 @@
 /**
  * media-gen MCP server over stdio (newline-delimited JSON-RPC 2.0).
  *
- * Exposes exactly three tools, on purpose:
+ * Exposes exactly the tools the user's request needs, on purpose:
  *
- * - `generate_image` does the work;
+ * - `generate_image` / `generate_video` / `generate_speech` do the work;
  * - `get_config` reports what is in effect and which models are legal;
  * - `set_config` changes settings, so "use the 5.0 model" needs no settings UI.
  *
@@ -20,26 +20,36 @@
  */
 
 import { KEY_SPEC, maskSecret } from './config.mjs';
-import { describeConfig, describeResult, describeVideoResult } from './describe.mjs';
+import {
+  describeConfig,
+  describeResult,
+  describeSpeechResult,
+  describeVideoResult,
+} from './describe.mjs';
 import { generateImage } from './generate.mjs';
-import { providerIds } from './providers.mjs';
+import { DEFAULT_PROVIDER_ID, PROVIDERS, providerIds } from './providers.mjs';
 import { applyConfigPatch, currentSettings } from './settings.mjs';
+import { generateSpeech } from './speech.mjs';
 import { generateVideo } from './video.mjs';
 
 /** Server identity reported during `initialize`. */
 export const SERVER_NAME = 'media-gen';
 
 /** Server version reported during `initialize`. */
-export const SERVER_VERSION = '0.2.0';
+export const SERVER_VERSION = '0.3.0';
 
 const SUPPORTED_PROTOCOL = '2024-11-05';
 
+/** Audio formats the default provider accepts, for the tool description. */
+const SPEECH_FORMATS = (PROVIDERS[DEFAULT_PROVIDER_ID].speechFormats ?? []).join(', ');
+
 const INSTRUCTIONS = [
-  'Image and video generation through a configurable provider.',
+  'Image, video and speech generation through a configurable provider.',
   'Call generate_image when the user asks to draw, create or generate a picture.',
+  'Call generate_speech when the user asks to read text aloud, voice a script or generate TTS audio.',
   'Call get_config to learn the current models, the legal sizes and which models exist.',
   'Call set_config when the user asks to switch the model, size or output directory.',
-  'Generation costs real money; never call generate_image speculatively.',
+  'Generation costs real money; never call a generate tool speculatively.',
   'generate_video is asynchronous and takes minutes: call it only when the user explicitly asks for a video.',
 ].join(' ');
 
@@ -139,12 +149,59 @@ export const TOOLS = [
     },
   },
   {
+    name: 'generate_speech',
+    description:
+      'Synthesise speech from text and save it as an audio file. Call this when the user asks to ' +
+      'read something aloud, to voice a script or narration, or to generate TTS audio. Returns the ' +
+      'absolute path of the saved file. Each call costs real money, so call it once per explicit ' +
+      'user request.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        text: {
+          type: 'string',
+          description: 'The text to speak, in natural language. Punctuation and pauses are honoured.',
+        },
+        model: {
+          type: 'string',
+          description:
+            'Speech resource id for this call only. Omit to use the configured default. Call ' +
+            'get_config for the available ids.',
+        },
+        voice: {
+          type: 'string',
+          description:
+            'Speaker id for this call only, for example zh_female_vv_uranus_bigtts. Any id the ' +
+            'account has activated works; omit to use the configured default.',
+        },
+        format: {
+          type: 'string',
+          description: `Audio format for this call only: ${SPEECH_FORMATS}. Omit to use the configured default.`,
+        },
+        outputDir: {
+          type: 'string',
+          description:
+            'Directory for this call only. Omit to use the configured default, which is ' +
+            '<workspace>/speech_output.',
+        },
+        timeoutMs: {
+          type: 'integer',
+          description:
+            'How long this call may wait, in milliseconds. Omit to use the configured default. ' +
+            'The ceiling is 3600000 (one hour).',
+        },
+      },
+      required: ['text'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'get_config',
     description:
-      'Report the current configuration: provider, base URL, the image and video models in use, ' +
-      'their defaults, the output directory, whether an API key is present (never its value), and ' +
-      'the catalogue of known models with their constraints. Call this before changing settings, ' +
-      'or when the user asks which model is in use.',
+      'Report the current configuration: provider, base URL, the image, video and speech models in ' +
+      'use, their defaults, the output directory, whether an API key is present (never its value), ' +
+      'and the catalogue of known models with their constraints. Call this before changing ' +
+      'settings, or when the user asks which model is in use.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -165,6 +222,12 @@ export const TOOLS = [
           type: 'string',
           description:
             'API key to store. Write-only: no tool ever returns it. Omit to keep the current key.',
+        },
+        speechApiKey: {
+          type: 'string',
+          description:
+            'Credential for the speech service, when it differs from the image/video key. ' +
+            'Write-only. Omit to keep the current value; leave unset to reuse apiKey.',
         },
         baseUrl: {
           type: 'string',
@@ -187,6 +250,22 @@ export const TOOLS = [
           description:
             'Default budget for the whole video flow, in milliseconds. A five second clip ' +
             'measured about four minutes.',
+        },
+        speechModel: {
+          type: 'string',
+          description: 'Default speech resource id, for example seed-tts-2.0.',
+        },
+        speechVoice: {
+          type: 'string',
+          description: 'Default speaker id used by generate_speech.',
+        },
+        speechFormat: {
+          type: 'string',
+          description: `Default speech audio format: ${SPEECH_FORMATS}.`,
+        },
+        speechTimeoutMs: {
+          type: 'integer',
+          description: 'Default budget for one speech call, in milliseconds.',
         },
         outputDir: {
           type: 'string',
@@ -235,17 +314,26 @@ async function callTool(name, args) {
     case 'generate_video':
       return textResult(describeVideoResult(await generateVideo(currentSettings(), args ?? {})));
 
+    case 'generate_speech':
+      return textResult(describeSpeechResult(await generateSpeech(currentSettings(), args ?? {})));
+
     case 'get_config':
       return textResult(describeConfig(currentSettings()));
 
     case 'set_config': {
       const patch = args ?? {};
       const settings = applyConfigPatch(patch);
-      const changed = Object.keys(patch).filter((key) => key !== 'apiKey');
+      const changed = Object.keys(patch).filter(
+        (key) => key !== 'apiKey' && key !== 'speechApiKey',
+      );
       const keyNote =
         patch.apiKey === undefined ? '' : `\nAPI key     : ${maskSecret(settings.apiKey)} (updated)`;
+      const speechKeyNote =
+        patch.speechApiKey === undefined
+          ? ''
+          : `\nspeech key  : ${maskSecret(settings.speechApiKey)} (updated)`;
       return textResult(
-        `configuration saved (${changed.join(', ') || 'api key only'})${keyNote}\n\n` +
+        `configuration saved (${changed.join(', ') || 'api key only'})${keyNote}${speechKeyNote}\n\n` +
           describeConfig(settings),
       );
     }

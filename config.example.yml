@@ -28,16 +28,32 @@ imageSize: 1024x1024
 # per call, so it is only generated when asked for explicitly.
 videoModel: doubao-seedance-2-5-260628
 
+# --- Speech (text to speech) --------------------------------------------------
+# Speech is a *different service* from the image/video host, with a key of its
+# own: an Ark key is rejected there. Create one in the Doubao speech console
+# (https://console.volcengine.com/speech/new/setting/apikeys) and set it here.
+# Leave it unset and apiKey is used instead, which is right for a provider whose
+# one key covers everything.
+# speechApiKey:
+
+# Speech resource id, and the speaker the audio is read in. Any voice id your
+# account has activated works; the default comes from the provider's own sample.
+speechModel: seed-tts-2.0
+speechVoice: zh_female_vv_uranus_bigtts
+speechFormat: mp3
+
 # How long a call may wait, in milliseconds. A five second clip measured about
-# four minutes, so keep the video budget generous. Both can be overridden for a
+# four minutes, so keep the video budget generous. Each can be overridden for a
 # single call (the tools take `timeoutMs`, the CLI takes --timeout-ms); the
 # ceiling is 3600000 (one hour).
 # Keep your MCP client's own tool timeout above these, or the client gives up
 # first and you see its error instead of ours.
 imageTimeoutMs: 180000
 videoTimeoutMs: 720000
+speechTimeoutMs: 120000
 
-# Where generated media is written. Images default to <workspace>/image_output
-# and videos to <workspace>/video_output; setting this sends both here. A leading
-# ~ is expanded, so quote the value to keep YAML from reading the tilde as null.
+# Where generated media is written. Images default to <workspace>/image_output,
+# videos to <workspace>/video_output and speech to <workspace>/speech_output;
+# setting this sends all three here. A leading ~ is expanded, so quote the value
+# to keep YAML from reading the tilde as null.
 # outputDir: "~/Pictures/generated"

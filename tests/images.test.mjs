@@ -12,6 +12,7 @@ import {
   suggestedSize,
   timestamp,
   validateImageRequest,
+  writeUniqueFileSync,
 } from '../src/images.mjs';
 import { PROVIDERS, findImageModel, resolveProvider, resolveSettings } from '../src/providers.mjs';
 
@@ -123,4 +124,52 @@ test('resolveSettings falls back to provider defaults and keeps provenance', () 
   assert.equal(settings.imageTimeoutMs, 180_000);
   assert.equal(settings.videoTimeoutMs, 720_000);
   assert.equal(findImageModel(ark, settings.imageModel).label, 'Seedream 4.0');
+});
+
+test('writeUniqueFileSync keeps a free name and suffixes a taken one', () => {
+  const taken = new Set(['/tmp/out/img-20261002-213428.jpg', '/tmp/out/img-20261002-213428-2.jpg']);
+  const options = {
+    exists: (path) => taken.has(path),
+    write: (path, bytes, config) => {
+      assert.deepEqual(config, { flag: 'wx' }, 'creation must be the arbiter, not a pre-check');
+      if (taken.has(path)) {
+        const error = new Error('EEXIST');
+        error.code = 'EEXIST';
+        throw error;
+      }
+    },
+  };
+
+  // A free path is used untouched, which keeps the documented shape.
+  assert.equal(
+    writeUniqueFileSync('/tmp/out/img-20261002-213429.jpg', Buffer.from('a'), options),
+    '/tmp/out/img-20261002-213429.jpg',
+  );
+  // A taken path walks past both existing names rather than overwriting either.
+  assert.equal(
+    writeUniqueFileSync('/tmp/out/img-20261002-213428.jpg', Buffer.from('a'), options),
+    '/tmp/out/img-20261002-213428-3.jpg',
+  );
+  // A name with no extension is a valid shape too.
+  assert.equal(writeUniqueFileSync('/tmp/out/audio', Buffer.from('a'), options), '/tmp/out/audio');
+});
+
+test('writeUniqueFileSync survives a name created between the check and the write', () => {
+  // The race: the predicate swears the name is free, then the create fails.
+  // Re-asking would loop forever, so the suffix has to advance monotonically.
+  const attempts = [];
+  const path = writeUniqueFileSync('/tmp/out/b.mp3', Buffer.from('y'), {
+    exists: () => false,
+    write: (candidate) => {
+      attempts.push(candidate);
+      if (attempts.length === 1) {
+        const error = new Error('EEXIST');
+        error.code = 'EEXIST';
+        throw error;
+      }
+    },
+  });
+
+  assert.equal(path, '/tmp/out/b-2.mp3');
+  assert.deepEqual(attempts, ['/tmp/out/b.mp3', '/tmp/out/b-2.mp3']);
 });

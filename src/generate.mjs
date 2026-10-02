@@ -7,10 +7,15 @@
  * @module generate
  */
 
-import { writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { DEFAULT_IMAGE_TIMEOUT_MS, KEY_SPEC, parseTimeoutMs } from './config.mjs';
-import { buildImageFileName, ensureDir, resolveOutputDir, validateImageRequest } from './images.mjs';
+import {
+  buildImageFileName,
+  ensureDir,
+  resolveOutputDir,
+  validateImageRequest,
+  writeUniqueFileSync,
+} from './images.mjs';
 
 /** Default ceiling for one HTTP leg, generous enough for a large render. */
 export const DEFAULT_TIMEOUT_MS = DEFAULT_IMAGE_TIMEOUT_MS;
@@ -197,8 +202,10 @@ export async function generateImage(
       extension = '.png';
     }
 
-    const path = join(directory, buildImageFileName({ at, index, extension }));
-    writeFileSync(path, bytes);
+    const path = writeUniqueFileSync(
+      join(directory, buildImageFileName({ at, index, extension })),
+      bytes,
+    );
     files.push({ path, bytes: bytes.length, sourceUrl: image.url });
   }
 

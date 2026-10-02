@@ -11,7 +11,7 @@ function launchEnv(configPath) {
   return { ...process.env, MEDIA_GEN_CONFIG: configPath, HOME: tmpdir() };
 }
 
-test('server speaks the MCP handshake and exposes three tools', async (t) => {
+test('server speaks the MCP handshake and exposes its tools', async (t) => {
   const { path } = fixtureConfig();
   const server = startServer(launchEnv(path));
   t.after(() => server.child.kill());
@@ -20,16 +20,19 @@ test('server speaks the MCP handshake and exposes three tools', async (t) => {
   assert.equal(init.result.serverInfo.name, 'media-gen');
   assert.equal(init.result.protocolVersion, '2024-11-05');
   assert.match(init.result.instructions, /generate_image/);
+  assert.match(init.result.instructions, /generate_speech/);
 
   const list = await server.rpc(2, 'tools/list', {});
   assert.deepEqual(
     list.result.tools.map((tool) => tool.name),
-    ['generate_image', 'generate_video', 'get_config', 'set_config'],
+    ['generate_image', 'generate_video', 'generate_speech', 'get_config', 'set_config'],
   );
   // The prompt is the one required field, which is what makes the tool usable
   // from a plain natural-language request.
   const generate = list.result.tools.find((tool) => tool.name === 'generate_image');
   assert.deepEqual(generate.inputSchema.required, ['prompt']);
+  const speech = list.result.tools.find((tool) => tool.name === 'generate_speech');
+  assert.deepEqual(speech.inputSchema.required, ['text']);
 });
 
 test('get_config reports settings and never leaks the key', async (t) => {
@@ -48,7 +51,10 @@ test('get_config reports settings and never leaks the key', async (t) => {
   assert.match(text, /config file : .*config\.yml \(present\)/);
   // The timeouts are reported, so "why did my call stop?" is answerable without
   // reading the source.
-  assert.match(text, /timeouts\s+: image 180s, video 720s/);
+  assert.match(text, /timeouts\s+: image 180s, video 720s, speech 120s/);
+  // Speech is configured by default too, and the key falls back to apiKey.
+  assert.match(text, /speech model: seed-tts-2\.0/);
+  assert.match(text, /speech key {2}: unit-tes…cdef/);
 });
 
 test('set_config persists a change that the very next call observes', async (t) => {
@@ -114,5 +120,5 @@ test('an unknown method is rejected without killing the server', async (t) => {
   assert.equal(bad.error.code, -32601);
 
   const still = await server.rpc(2, 'tools/list', {});
-  assert.equal(still.result.tools.length, 4);
+  assert.equal(still.result.tools.length, 5);
 });

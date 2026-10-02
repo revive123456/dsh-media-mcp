@@ -15,11 +15,15 @@
  * @module video
  */
 
-import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_VIDEO_TIMEOUT_MS, KEY_SPEC, parseTimeoutMs } from './config.mjs';
 import { apiError, joinUrl, readJson, requireText, truncate } from './generate.mjs';
-import { buildVideoFileName, ensureDir, resolveOutputDir } from './images.mjs';
+import {
+  buildVideoFileName,
+  ensureDir,
+  resolveOutputDir,
+  writeUniqueFileSync,
+} from './images.mjs';
 import { findVideoModel } from './providers.mjs';
 
 /** How long to wait between two task polls. */
@@ -252,8 +256,7 @@ export async function generateVideo(
       kind: 'video',
     }),
   );
-  const path = join(directory, buildVideoFileName({ at: now() }));
-  writeFileSync(path, bytes);
+  const path = writeUniqueFileSync(join(directory, buildVideoFileName({ at: now() })), bytes);
 
   return {
     provider: provider.id,

@@ -7,6 +7,7 @@ yarn.lock
 # Generated media
 image_output/
 video_output/
+speech_output/
 
 # Local configuration, including API keys
 config.yml
